@@ -1,5 +1,7 @@
 # Apache Airflow
 
+![Apache Airflow Icon](./railwayapp-airflow.svg)
+
 Deploy Apache Airflow on Railway.
 
 ## Files in this template
