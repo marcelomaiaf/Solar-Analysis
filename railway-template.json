@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/vergissberlin/railway/main/docs/railway-template.schema.json",
+  "schemaVersion": 1,
+  "project": "railwayapp-airflow",
+  "repo": "vergissberlin/railwayapp-airflow",
+  "displayName": "Apache Airflow",
+  "publishedCode": "apache-airflow",
+  "image": "https://raw.githubusercontent.com/vergissberlin/railwayapp-airflow/main/railwayapp-airflow.svg",
+  "description": "Deploy Apache Airflow on Railway for workflows, DAGs, and scheduling.",
+  "workspaceAutomation": false
+}
