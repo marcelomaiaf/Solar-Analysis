@@ -1,6 +1,7 @@
 # Deploy and Host Apache Airflow on Railway
 
-![Apache Airflow Icon](./railwayapp-airflow.svg)
+![Template Header](./template-header.svg)
+
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/9jXQaO?referralCode=2_sIT9&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
