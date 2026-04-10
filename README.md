@@ -35,7 +35,7 @@ Hosting Airflow means running the webserver, scheduler, and—depending on your 
 
 - `Dockerfile` — Uses the official `apache/airflow` image.
 - `docker-entrypoint.sh` — Starts Airflow in standalone mode on Railway `$PORT`.
-- `railway.toml` — Health check and restart policy.
+- `railway.toml` — Health check, restart policy, and required volume mount.
 
 **Environment variables**
 
@@ -51,6 +51,8 @@ _AIRFLOW_WWW_USER_PASSWORD=replace-with-strong-password
 Attach a Railway volume and mount it to:
 
 - `/opt/airflow/data`
+
+The template enforces this with `requiredMountPath` in `railway.toml`.
 
 **Notes**
 
