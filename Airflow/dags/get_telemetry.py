@@ -16,7 +16,9 @@ with DAG(
 
     get_plant_data
 
-#task 1: puxar dados cadastrais da usina
+
+#task 1: puxar dados cadastrais da usina [V]
+
 #task 2: puxar dados de telemetria da usina
 #task 3: puxar dados climáticos
 #task 4: calcular geração esperada
