@@ -1,0 +1,10 @@
+requests
+polars
+pandas
+pvlib
+psycopg2-binary
+sqlalchemy
+openai
+pydantic
+dotenv
+apache-airflow-providers-postgres
