@@ -1,17 +1,47 @@
 import datetime
+import json
+import os
+
+from cryptography.fernet import Fernet
 from airflow.sdk import DAG
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
+key = os.getenv("CREDENTIALS_ENCRYPTION_KEY")
 sql_query = """
-            select name,vendor,timezone, 
-                   capacity_kwp,location,address,
-                   latitude, longitude,azimuth_deg,tilt_deg	, 
-                   vendor_plant_id,vendor_device_id,vendor_timezone, vendor_metadata_json 
-            from plants p join vendor_plant_links v on p.id = v.plant_id where vendor = 'weg'
+            select
+                p.name,
+                v.vendor,
+                p.timezone,
+                p.capacity_kwp,
+                p.location,
+                p.address,
+                p.latitude,
+                p.longitude,
+                p.azimuth_deg,
+                p.tilt_deg,
+                v.plant_id,
+                v.vendor_account_id,
+                v.vendor_plant_id,
+                v.vendor_device_id,
+                v.vendor_timezone,
+                a.auth_type,
+                a.credentials_encrypted
+            from plants p
+            join vendor_plant_links v
+                on p.id = v.plant_id
+            join vendor_accounts a
+                on p.tenant_id = a.tenant_id
+            and a.vendor = v.vendor
+            where v.vendor = 'weg';
             """
 
+def decrypt(encrypted_text,key):
+    key = Fernet(key)
+    decrypt = key.decrypt(encrypted_text)
+    return json.loads(decrypt)
+
 with DAG(
-    dag_id="telemtry_dag",
+    dag_id="telemetry_dag",
     start_date=datetime.datetime(2026, 1, 1),
     schedule="@daily",
     catchup=False
