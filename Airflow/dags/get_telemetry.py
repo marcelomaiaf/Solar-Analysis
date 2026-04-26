@@ -33,12 +33,15 @@ sql_query = """
                 on p.tenant_id = a.tenant_id
             and a.vendor = v.vendor
             where v.vendor = 'weg';
-            """
-
+            """ # reduzir o número de campos puxados para o stritamente necessário
 def decrypt(encrypted_text,key):
     key = Fernet(key)
     decrypt = key.decrypt(encrypted_text)
     return json.loads(decrypt)
+
+def row_as_dict(cursor):
+    columns = [col[0] for col in cursor.description]
+    return [dict(zip(columns,row)) for row in cursor.fetchall()]
 
 with DAG(
     dag_id="telemetry_dag",
@@ -50,6 +53,7 @@ with DAG(
         task_id="get_plant_data",
         conn_id="railway_postgres",
         sql=sql_query,
+        handler=row_as_dict,
     )
 
     get_plant_data
