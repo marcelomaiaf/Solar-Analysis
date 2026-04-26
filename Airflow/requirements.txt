@@ -8,4 +8,3 @@ openai
 pydantic
 apache-airflow-providers-postgres
 cryptography
-json
