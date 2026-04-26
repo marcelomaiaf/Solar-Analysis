@@ -6,5 +6,6 @@ psycopg2-binary
 sqlalchemy
 openai
 pydantic
-dotenv
 apache-airflow-providers-postgres
+cryptography
+json
