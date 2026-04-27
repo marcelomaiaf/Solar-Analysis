@@ -35,6 +35,8 @@ sql_query = """
             where v.vendor = 'weg';
             """ # reduzir o número de campos puxados para o stritamente necessário
 def decrypt(encrypted_text,key):
+    print(encrypted_text)
+    print(key)
     key = Fernet(key)
     decrypt = key.decrypt(encrypted_text)
     return json.loads(decrypt)
