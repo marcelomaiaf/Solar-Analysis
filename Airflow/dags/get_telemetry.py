@@ -2,11 +2,13 @@ import datetime
 import json
 import os
 
+import requests
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.sdk import dag, task
 from cryptography.fernet import Fernet
 
 key = os.getenv("CREDENTIALS_ENCRYPTION_KEY")
+url = "https://solarportal-api.weg.net/api/v1/measurements"
 sql_query = """
             select
                 p.name,
@@ -35,8 +37,6 @@ sql_query = """
             where v.vendor = 'weg';
             """ # reduzir o número de campos puxados para o stritamente necessário
 def decrypt(encrypted_text,key):
-    print(encrypted_text)
-    print(key)
     key = Fernet(key)
     decrypt = key.decrypt(encrypted_text)
     return json.loads(decrypt)
@@ -65,15 +65,43 @@ def weg_analysis():
 
     @task
     def get_credentials(plants):
-        print(key)
         if plants[0]:
             return decrypt(plants[0].get('credentials_encrypted').get('ciphertext'), key)
     
     @task
     def get_telemetry(plants, credentials):
-        for i in plants:
-            print(i)
-            print(credentials)
+        #salvar telemetria no banco de dados
+
+        base_params = {
+            "dateFrom": "2026-03-22T00:00:00.000Z",
+            "dateTo": "2026-03-23T00:00:00.000Z",
+            "groupBy": 900000,
+            "variables": "acActivePower",
+        }
+
+        headers = {
+            "x-api-key": credentials.get('api_key'),
+            "x-api-secret": credentials.get('api_secret'),
+        }
+        results = []
+        with requests.Session() as session:
+            session.headers.update(headers)
+
+            for plant in plants:
+                params = {
+                    **base_params,
+                    "plantId": plant.get('vendor_plant_id')
+                }
+
+                response = session.get(url=url, params=params)
+                response.raise_for_status()
+                
+                results.append({
+                    "plant_id": plant.get('vendor_plant_id'),
+                    "data": response.json(),
+                })
+        return results
+            
 
     #task 2: puxar dados de telemetria da usina
     get_credentials(get_plant_data.output)
