@@ -3,7 +3,7 @@ import json
 import os
 
 from cryptography.fernet import Fernet
-from airflow.sdk import DAG
+from airflow.sdk import dag, task
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
 key = os.getenv("CREDENTIALS_ENCRYPTION_KEY")
@@ -43,12 +43,16 @@ def row_as_dict(cursor):
     columns = [col[0] for col in cursor.description]
     return [dict(zip(columns,row)) for row in cursor.fetchall()]
 
-with DAG(
-    dag_id="telemetry_dag",
+@dag(
+    dag_id="weg_analysis",
     start_date=datetime.datetime(2026, 1, 1),
     schedule="@daily",
-    catchup=False
-):
+    catchup=False,
+    tags=["example"],
+)
+
+def weg_analysis():   
+    #task 1: puxar dados cadastrais da usina
     get_plant_data = SQLExecuteQueryOperator(
         task_id="get_plant_data",
         conn_id="railway_postgres",
@@ -56,12 +60,15 @@ with DAG(
         handler=row_as_dict,
     )
 
-    get_plant_data
+    @task
+    def get_telemetry(plants):
+        for i in plants:
+            print(i)
 
+    #task 2: puxar dados de telemetria da usina
+    get_telemetry(get_plant_data.output)
 
-#task 1: puxar dados cadastrais da usina [V]
-
-#task 2: puxar dados de telemetria da usina
+weg_analysis()
 #task 3: puxar dados climáticos
 #task 4: calcular geração esperada
 #task 5: Identificar se está dentro do intervalo esperado de geração
