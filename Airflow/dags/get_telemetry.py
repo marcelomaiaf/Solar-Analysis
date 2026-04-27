@@ -2,9 +2,9 @@ import datetime
 import json
 import os
 
-from cryptography.fernet import Fernet
-from airflow.sdk import dag, task
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
+from airflow.sdk import dag, task
+from cryptography.fernet import Fernet
 
 key = os.getenv("CREDENTIALS_ENCRYPTION_KEY")
 sql_query = """
@@ -62,12 +62,20 @@ def weg_analysis():
 
 
     @task
-    def get_telemetry(plants):
+    def get_credentials(plants):
+        if plants[0]:
+            return decrypt(plants[0].get('credentials_encrypted'))
+    
+    @task
+    def get_telemetry(plants, credentials):
         for i in plants:
             print(i)
+            print(credentials)
 
     #task 2: puxar dados de telemetria da usina
-    get_telemetry(get_plant_data.output[0])
+    get_credentials(get_plant_data.output)
+    get_telemetry(get_plant_data.output, get_credentials)
+
 
 weg_analysis()
 #task 3: puxar dados climáticos
