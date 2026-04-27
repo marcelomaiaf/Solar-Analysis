@@ -64,7 +64,7 @@ def weg_analysis():
     @task
     def get_credentials(plants):
         if plants[0]:
-            return decrypt(plants[0].get('credentials_encrypted'))
+            return decrypt(plants[0].get('credentials_encrypted'), key)
     
     @task
     def get_telemetry(plants, credentials):
@@ -83,3 +83,4 @@ weg_analysis()
 #task 5: Identificar se está dentro do intervalo esperado de geração
 #task 6: estimar perda em kwh e financeira
 #task 7: relatório da LLM
+#task 8: mandar por email
