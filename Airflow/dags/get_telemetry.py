@@ -48,7 +48,7 @@ def row_as_dict(cursor):
     start_date=datetime.datetime(2026, 1, 1),
     schedule="@daily",
     catchup=False,
-    tags=["example"],
+    tags=["weg", "daily", "LLM"],
 )
 
 def weg_analysis():   
@@ -60,13 +60,14 @@ def weg_analysis():
         handler=row_as_dict,
     )
 
+
     @task
     def get_telemetry(plants):
         for i in plants:
             print(i)
 
     #task 2: puxar dados de telemetria da usina
-    get_telemetry(get_plant_data.output)
+    get_telemetry(get_plant_data.output[0])
 
 weg_analysis()
 #task 3: puxar dados climáticos
