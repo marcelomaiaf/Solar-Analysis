@@ -95,7 +95,7 @@ def weg_analysis():
 
                 response = session.get(url=url, params=params)
                 response.raise_for_status()
-                
+
                 results.append({
                     "plant_id": plant.get('vendor_plant_id'),
                     "data": response.json(),
@@ -105,7 +105,7 @@ def weg_analysis():
 
     #task 2: puxar dados de telemetria da usina
     get_credentials(get_plant_data.output)
-    get_telemetry(get_plant_data.output, get_credentials)
+    get_telemetry(get_credentials, get_plant_data.output)
 
 
 weg_analysis()
