@@ -63,6 +63,7 @@ def weg_analysis():
 
     @task
     def get_credentials(plants):
+        print(key)
         if plants[0]:
             return decrypt(plants[0].get('credentials_encrypted'), key)
     
