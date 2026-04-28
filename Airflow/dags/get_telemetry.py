@@ -204,7 +204,7 @@ def weg_analysis():
                     community="re",
                 )
 
-                nasa_power_df = nasa_power_df.reset_index()
+                # nasa_power_df = nasa_power_df.reset_index()
 
                 results.append({
                     "plant_id": plant.get("plant_id"),
