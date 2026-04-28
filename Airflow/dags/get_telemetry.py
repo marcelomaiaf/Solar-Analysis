@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -118,7 +118,7 @@ def weg_analysis():
             return decrypt(plants[0].get('credentials_encrypted').get('ciphertext'), key)
     
     #task 2: puxar dados de telemetria da usina
-    @task
+    @task(retries=2, retry_delay=timedelta(seconds=5),retry_exponential_backoff=True,)
     def get_telemetry(plants, credentials):
         #salvar telemetria no banco de dados
 
@@ -143,7 +143,7 @@ def weg_analysis():
                     "plantId": plant.get('vendor_plant_id')
                 }
                 response = session.get(url=weg_url, params=params)
-                response.raise_for_status()
+                # response.raise_for_status()
                 
                 results.append({
                     "plant_id": plant.get('vendor_plant_id'),
