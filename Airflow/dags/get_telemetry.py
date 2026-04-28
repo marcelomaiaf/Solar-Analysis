@@ -96,7 +96,7 @@ def row_as_dict(cursor):
 
 @dag(
     dag_id="weg_analysis",
-    start_date=datetime.datetime(2026, 1, 1),
+    start_date=datetime(2026, 1, 1),
     schedule="@daily",
     catchup=False,
     tags=["weg", "daily", "LLM"],
