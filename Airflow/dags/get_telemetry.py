@@ -143,7 +143,7 @@ def weg_analysis():
                     "plantId": plant.get('vendor_plant_id')
                 }
                 response = session.get(url=weg_url, params=params)
-                # response.raise_for_status()
+                response.raise_for_status()
                 
                 results.append({
                     "plant_id": plant.get('vendor_plant_id'),
