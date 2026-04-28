@@ -1,14 +1,63 @@
-import datetime
 import json
 import os
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
+import pandas as pd
 import requests
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.sdk import dag, task
 from cryptography.fernet import Fernet
+from pvlib.iotools import get_nasa_power
+
+tz = ZoneInfo("America/Sao_Paulo")
+
+today = datetime.now(tz).date()
+date_from = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=tz)
+date_to = datetime(today.year, today.month, today.day, 23, 59, 0, tzinfo=tz)
+
+date_from_str = date_from.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+date_to_str = date_to.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
 
 key = os.getenv("CREDENTIALS_ENCRYPTION_KEY")
-url = "https://solarportal-api.weg.net/api/v1/measurements"
+weg_url = "https://solarportal-api.weg.net/api/v1/measurements"
+open_meteo_url = "https://api.open-meteo.com/v1/forecast"
+hourly_variables = [
+        "shortwave_radiation",
+        "direct_radiation",
+        "diffuse_radiation",
+        "direct_normal_irradiance",
+        "temperature_2m",
+        "relative_humidity_2m",
+        "dewpoint_2m",
+        "precipitation",
+        "rain",
+        "cloud_cover",
+        "cloud_cover_low",
+        "cloud_cover_mid",
+        "cloud_cover_high",
+        "wind_speed_10m",
+        "wind_gusts_10m",
+        "surface_pressure",
+        "weather_code",
+        "is_day",
+        "sunshine_duration",
+    ]
+
+daily_variables = [
+    "sunrise",
+    "sunset",
+    "daylight_duration",
+    "sunshine_duration",
+    "shortwave_radiation_sum",
+    "precipitation_sum",
+    "rain_sum",
+    "precipitation_hours",
+    "temperature_2m_max",
+    "temperature_2m_min",
+    "wind_speed_10m_max",
+]
 sql_query = """
             select
                 p.name,
@@ -68,13 +117,14 @@ def weg_analysis():
         if plants[0]:
             return decrypt(plants[0].get('credentials_encrypted').get('ciphertext'), key)
     
+    #task 2: puxar dados de telemetria da usina
     @task
     def get_telemetry(plants, credentials):
         #salvar telemetria no banco de dados
 
         base_params = {
-            "dateFrom": "2026-03-22T00:00:00.000Z",
-            "dateTo": "2026-03-23T00:00:00.000Z",
+            "dateFrom": date_from_str, #data de hoje 00:00
+            "dateTo": date_to_str, #data de hoje 23:59
             "groupBy": 900000,
             "variables": "acActivePower",
         }
@@ -86,31 +136,102 @@ def weg_analysis():
         results = []
         with requests.Session() as session:
             session.headers.update(headers)
-            print(headers)
+
             for plant in plants:
                 params = {
                     **base_params,
                     "plantId": plant.get('vendor_plant_id')
                 }
-                print(params)
-                response = session.get(url=url, params=params)
-                print(response.status_code)
+                response = session.get(url=weg_url, params=params)
                 response.raise_for_status()
                 
                 results.append({
                     "plant_id": plant.get('vendor_plant_id'),
-                    "data": response.json(),
+                    "telemetry": response.json(),
                 })
         return results
-            
+    
+    #task 3: puxar dados climáticos
+    @task
+    def get_weather(plants):
+        results = []
+        with requests.Session() as session:
+            for plant in plants:
+                latitude = plant.get("latitude")
+                longitude = plant.get("longitude")
+                timezone = plant.get("timezone") or "America/Sao_Paulo"
 
-    #task 2: puxar dados de telemetria da usina
+                if latitude is None or longitude is None:
+                    results.append({
+                        "plant_id": plant.get("plant_id"),
+                        "plant_name": plant.get("name"),
+                        "error": "missing_latitude_or_longitude",
+                    })
+                    continue
+
+
+                open_meteo_params = {
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "hourly": ",".join(hourly_variables),
+                    "daily": ",".join(daily_variables),
+                    "timezone": timezone,
+                    "forecast_days": 2,
+                }
+
+                response = session.get(
+                    open_meteo_url,
+                    params=open_meteo_params,
+                    timeout=30,
+                )
+                response.raise_for_status()
+                open_meteo_data = response.json()
+
+                # NASA POWER via pvlib: bom para baseline histórico solar/meteo.
+                # Ajuste as datas conforme a janela da telemetria real.
+                nasa_power_df, nasa_power_meta = get_nasa_power(
+                    latitude=latitude,
+                    longitude=longitude,
+                    start=pd.Timestamp(date_from_str), #ajustar data
+                    end=pd.Timestamp(date_to_str), #ajustar data
+                    parameters=[
+                        "ghi",
+                        "dni",
+                        "dhi",
+                        "temp_air",
+                        "wind_speed",
+                    ],
+                    community="re",
+                )
+
+                nasa_power_df = nasa_power_df.reset_index()
+
+                results.append({
+                    "plant_id": plant.get("plant_id"),
+                    "vendor_plant_id": plant.get("vendor_plant_id"),
+                    "plant_name": plant.get("name"),
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "timezone": timezone,
+                    "tilt_deg": plant.get("tilt_deg"),
+                    "azimuth_deg": plant.get("azimuth_deg"),
+                    "capacity_kwp": plant.get("capacity_kwp"),
+                    "open_meteo_forecast": open_meteo_data,
+                    "nasa_power_history": {
+                        "metadata": nasa_power_meta,
+                        "records": nasa_power_df.to_dict(orient="records"),
+                    },
+                })
+
+        return results
+
     credentials = get_credentials(get_plant_data.output)
     telemetry = get_telemetry(get_plant_data.output, credentials)
+    weather = get_weather(get_plant_data.output)
+
 
 
 weg_analysis()
-#task 3: puxar dados climáticos
 #task 4: calcular geração esperada
 #task 5: Identificar se está dentro do intervalo esperado de geração
 #task 6: estimar perda em kwh e financeira
