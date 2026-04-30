@@ -223,7 +223,8 @@ def weg_analysis():
                     "open_meteo_forecast": open_meteo_data,
                     "nasa_power_history": {
                         "metadata": nasa_power_meta,
-                        "records": nasa_power_df.to_dict(orient="records"),
+                        "records": nasa_power_df,
+                        # "records": nasa_power_df.to_dict(orient="records"),
                     },
                 })
 
