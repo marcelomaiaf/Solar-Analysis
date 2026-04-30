@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -143,7 +144,10 @@ def weg_analysis():
                     "plantId": plant.get('vendor_plant_id')
                 }
                 response = session.get(url=weg_url, params=params)
-                response.raise_for_status()
+                if response.status_code == 429:
+                    time.sleep(20)
+                    response = session.get(url=weg_url, params=params)
+                    # response.raise_for_status()
                 
                 results.append({
                     "plant_id": plant.get('vendor_plant_id'),
