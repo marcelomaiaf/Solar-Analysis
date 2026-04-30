@@ -229,7 +229,7 @@ def weg_analysis():
     telemetry = get_telemetry(get_plant_data.output, credentials)
     weather = get_weather(get_plant_data.output)
 
-
+# new commit
 
 weg_analysis()
 #task 4: calcular geração esperada
