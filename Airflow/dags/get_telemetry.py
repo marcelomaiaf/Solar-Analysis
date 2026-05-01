@@ -307,8 +307,8 @@ def weg_analysis():
                     "hourly": ",".join(hourly_variables),
                     "daily": ",".join(daily_variables),
                     "timezone": timezone,
-                    "past_days": 1,
-                    "forecast_days": 1,
+                    "start_date": target_day.isoformat(),
+                    "end_date": target_day.isoformat(),
                 }
 
                 response = session.get(
@@ -347,7 +347,6 @@ def weg_analysis():
                     "error": weather_result.get("error"),
                 })
                 continue
-
             target_day = target_date_from_weather_result(weather_result)
             results.append(estimate_generation_kwh_from_open_meteo(weather_result, target_day))
 
