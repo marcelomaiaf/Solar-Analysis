@@ -98,7 +98,7 @@ def get_target_date(context=None):
     logical_date = context["logical_date"]
     if logical_date is None:
         raise ValueError("logical_date ausente no contexto do Airflow")
-    return (logical_date.date() - timedelta(days=1)).date()
+    return logical_date.date() - timedelta(days=1)
 
 def utc_day_window(day):
     date_from = datetime(day.year, day.month, day.day, 0, 0, 0, tzinfo=tz)
