@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import pvlib
 import requests
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.sdk import dag, task
@@ -13,9 +14,9 @@ from pvlib.iotools import get_nasa_power
 
 tz = ZoneInfo("America/Sao_Paulo")
 
-today = datetime.now(tz).date()
-date_from = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=tz)
-date_to = datetime(today.year, today.month, today.day, 23, 59, 0, tzinfo=tz)
+date = (datetime.today() - timedelta(days= 1)).date()
+date_from = datetime(date.year, date.month, date.day, 0, 0, 0, tzinfo=tz)
+date_to = datetime(date.year, date.month, date.day, 23, 59, 0, tzinfo=tz)
 
 date_from_str = date_from.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 date_to_str = date_to.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
@@ -192,21 +193,22 @@ def weg_analysis():
                 open_meteo_data = response.json()
 
                 # NASA POWER via pvlib: bom para baseline histórico solar/meteo.
-                # Ajuste as datas conforme a janela da telemetria real.
-                nasa_power_df, nasa_power_meta = get_nasa_power(
-                    latitude=latitude,
-                    longitude=longitude,
-                    start=pd.Timestamp(date_from_str), #ajustar data
-                    end=pd.Timestamp(date_to_str), #ajustar data
-                    parameters=[
-                        "ghi",
-                        "dni",
-                        "dhi",
-                        "temp_air",
-                        "wind_speed",
-                    ],
-                    community="re",
-                )
+                # Pedir para o GPT consertar
+                # nasa_power_df, nasa_power_meta = get_nasa_power(
+                #     latitude=latitude,
+                #     longitude=longitude,
+                #     start=pd.Timestamp(date_from_str), #ajustar data
+                #     end=pd.Timestamp(date_to_str), #ajustar data
+                #     parameters=[
+                #         "ghi",
+                #         "dni",
+                #         "dhi",
+                #         "temp_air",
+                #         "wind_speed",
+                #     ],
+                #     community="re",
+                # )
+                # 'ghi','dni','dhi','temp_air','wind_speed',
 
                 # nasa_power_df = nasa_power_df.reset_index()
 
@@ -221,20 +223,65 @@ def weg_analysis():
                     "azimuth_deg": plant.get("azimuth_deg"),
                     "capacity_kwp": plant.get("capacity_kwp"),
                     "open_meteo_forecast": open_meteo_data,
-                    "nasa_power_history": {
-                        "metadata": nasa_power_meta,
-                        "records": nasa_power_df,
-                        # "records": nasa_power_df.to_dict(orient="records"),
-                    },
+                    # "nasa_power_history": {
+                    #     "metadata": nasa_power_meta,
+                    #     "records": nasa_power_df,
+                    #     "records": nasa_power_df.to_dict(orient="records"),
+                    # },
                 })
+
+        return results
+    
+    @task
+    def get_expected_generation(plants):
+        results = []
+        day = date
+        for plant in plants:
+            data, _ = pvlib.iotools.get_pvgis_hourly(
+                latitude=float(plant["latitude"]),
+                longitude=float(plant["longitude"]),
+                start=day.year,
+                end=day.year,
+                surface_tilt=float(plant["tilt_deg"]),
+                surface_azimuth=float(plant["azimuth_deg"]),
+                pvcalculation=True,
+                peakpower=float(plant.get("peak_power_kw",17.1)),
+                loss=float(plant.get("loss_percent", 14)),
+                components=True,
+                map_variables=True,
+                timeout=60,
+            )
+
+            if data.index.tz is None:
+                data.index = data.index.tz_localize("UTC")
+
+            local_data = data.tz_convert(tz)
+            daily = local_data[local_data.index.date == day]
+
+            if daily.empty:
+                raise ValueError(f"Sem dados PVGIS para {date}")
+
+            power_w = daily["P"].clip(lower=0)  # P = potência FV em W
+            energy_kwh = power_w.sum() / 1000  # dados horários: W * 1h = Wh
+
+            results.append({
+                "plant_id": plant.get("plant_id"), 
+                "data" : {
+                    "date": day,
+                    "expected_generation_kwh": round(float(energy_kwh), 3),
+                    "peak_power_kw": round(float(power_w.max() / 1000), 3),
+                    "hours": int(len(daily)),
+                    "source": "PVGIS via pvlib",
+                }
+            })
 
         return results
 
     credentials = get_credentials(get_plant_data.output)
     telemetry = get_telemetry(get_plant_data.output, credentials)
     weather = get_weather(get_plant_data.output)
+    expected_generation = get_expected_generation(get_plant_data.output)
 
-# new commit
 
 weg_analysis()
 #task 4: calcular geração esperada
