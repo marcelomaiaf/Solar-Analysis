@@ -241,8 +241,8 @@ def weg_analysis():
                 data, _ = pvlib.iotools.get_pvgis_hourly(
                     latitude=float(plant["latitude"]),
                     longitude=float(plant["longitude"]),
-                    start=day.year,
-                    end=day.year,
+                    start=2023,
+                    end=2023,
                     surface_tilt=float(plant.get("tilt_deg",10)),
                     surface_azimuth=float(plant.get("azimuth_deg",0)),
                     pvcalculation=True,
