@@ -237,43 +237,44 @@ def weg_analysis():
         results = []
         day = date
         for plant in plants:
-            data, _ = pvlib.iotools.get_pvgis_hourly(
-                latitude=float(plant["latitude"]),
-                longitude=float(plant["longitude"]),
-                start=day.year,
-                end=day.year,
-                surface_tilt=float(plant["tilt_deg"]),
-                surface_azimuth=float(plant["azimuth_deg"]),
-                pvcalculation=True,
-                peakpower=float(plant.get("peak_power_kw",17.1)),
-                loss=float(plant.get("loss_percent", 14)),
-                components=True,
-                map_variables=True,
-                timeout=60,
-            )
+            if plant.get("latitude"):
+                data, _ = pvlib.iotools.get_pvgis_hourly(
+                    latitude=float(plant["latitude"]),
+                    longitude=float(plant["longitude"]),
+                    start=day.year,
+                    end=day.year,
+                    surface_tilt=float(plant["tilt_deg"],10),
+                    surface_azimuth=float(plant["azimuth_deg"],0),
+                    pvcalculation=True,
+                    peakpower=float(plant.get("peak_power_kw",17.1)),
+                    loss=float(plant.get("loss_percent", 14)),
+                    components=True,
+                    map_variables=True,
+                    timeout=60,
+                )
 
-            if data.index.tz is None:
-                data.index = data.index.tz_localize("UTC")
+                if data.index.tz is None:
+                    data.index = data.index.tz_localize("UTC")
 
-            local_data = data.tz_convert(tz)
-            daily = local_data[local_data.index.date == day]
+                local_data = data.tz_convert(tz)
+                daily = local_data[local_data.index.date == day]
 
-            if daily.empty:
-                raise ValueError(f"Sem dados PVGIS para {date}")
+                if daily.empty:
+                    raise ValueError(f"Sem dados PVGIS para {date}")
 
-            power_w = daily["P"].clip(lower=0)  # P = potência FV em W
-            energy_kwh = power_w.sum() / 1000  # dados horários: W * 1h = Wh
+                power_w = daily["P"].clip(lower=0)  # P = potência FV em W
+                energy_kwh = power_w.sum() / 1000  # dados horários: W * 1h = Wh
 
-            results.append({
-                "plant_id": plant.get("plant_id"), 
-                "data" : {
-                    "date": day,
-                    "expected_generation_kwh": round(float(energy_kwh), 3),
-                    "peak_power_kw": round(float(power_w.max() / 1000), 3),
-                    "hours": int(len(daily)),
-                    "source": "PVGIS via pvlib",
-                }
-            })
+                results.append({
+                    "plant_id": plant.get("plant_id"), 
+                    "data" : {
+                        "date": day,
+                        "expected_generation_kwh": round(float(energy_kwh), 3),
+                        "peak_power_kw": round(float(power_w.max() / 1000), 3),
+                        "hours": int(len(daily)),
+                        "source": "PVGIS via pvlib",
+                    }
+                })
 
         return results
 
