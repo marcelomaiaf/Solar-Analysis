@@ -18,7 +18,6 @@ weg_url = "https://solarportal-api.weg.net/api/v1/measurements"
 open_meteo_url = "https://api.open-meteo.com/v1/forecast"
 default_tilt_deg = 10
 default_azimuth_deg = 0
-default_capacity_kwp = 17.1
 default_loss_percent = 14
 default_gamma_pdc = -0.004
 hourly_variables = [
@@ -61,7 +60,8 @@ sql_query = """
                 p.name,
                 v.vendor,
                 p.timezone,
-                p.capacity_kwp,
+                p.area_m2,
+                p.module_efficiency,
                 p.location,
                 p.address,
                 p.latitude,
@@ -118,6 +118,22 @@ def required_float(value, field_name):
         raise ValueError(f"Campo obrigatorio ausente para estimativa: {field_name}")
     return float(value)
 
+def required_positive_float(value, field_name):
+    number = required_float(value, field_name)
+    if number <= 0:
+        raise ValueError(f"Campo precisa ser positivo para estimativa: {field_name}")
+    return number
+
+
+
+def normalize_module_efficiency(value):
+    efficiency = required_positive_float(value, "module_efficiency")
+    if efficiency > 1:
+        efficiency = efficiency / 100
+    if efficiency <= 0 or efficiency > 1:
+        raise ValueError("module_efficiency deve ser uma fracao entre 0 e 1 ou percentual entre 0 e 100")
+    return efficiency
+
 def hourly_series(hourly_data, key, index, default):
     values = hourly_data.get(key)
     if values is None:
@@ -155,7 +171,8 @@ def estimate_generation_kwh_from_open_meteo(weather_result, target_date):
     longitude = required_float(weather_result.get("longitude"), "longitude")
     tilt_deg = float_or_default(weather_result.get("tilt_deg"), default_tilt_deg)
     azimuth_deg = float_or_default(weather_result.get("azimuth_deg"), default_azimuth_deg)
-    capacity_kwp = float_or_default(weather_result.get("capacity_kwp"), default_capacity_kwp)
+    area_m2 = required_positive_float(weather_result.get("area_m2"), "area_m2")
+    module_efficiency = normalize_module_efficiency(weather_result.get("module_efficiency"))
     loss_percent = float_or_default(weather_result.get("loss_percent"), default_loss_percent)
 
     location = pvlib.location.Location(latitude=latitude, longitude=longitude, tz=timezone_name)
@@ -174,12 +191,8 @@ def estimate_generation_kwh_from_open_meteo(weather_result, target_date):
         temp_air=daily_weather["temp_air"],
         wind_speed=daily_weather["wind_speed_ms"],
     )
-    dc_power_w = pvlib.pvsystem.pvwatts_dc(
-        poa["poa_global"],
-        cell_temperature,
-        capacity_kwp * 1000,
-        default_gamma_pdc,
-    )
+    temperature_factor = 1 + default_gamma_pdc * (cell_temperature - 25)
+    dc_power_w = poa["poa_global"] * area_m2 * module_efficiency * temperature_factor
     loss_factor = max(0, min(loss_percent, 100)) / 100
     estimated_power_w = pd.Series(dc_power_w, index=daily_weather.index).clip(lower=0) * (1 - loss_factor)
     estimated_generation_kwh = round(float(estimated_power_w.sum() / 1000), 3)
@@ -196,8 +209,9 @@ def estimate_generation_kwh_from_open_meteo(weather_result, target_date):
             "expected_generation_kwh": estimated_generation_kwh,
             "peak_power_kw": round(float(estimated_power_w.max() / 1000), 3),
             "hours": int(len(daily_weather)),
-            "capacity_kwp": round(float(capacity_kwp), 3),
-            "source": "Open-Meteo irradiance + pvlib PVWatts",
+            "area_m2": round(float(area_m2), 3),
+            "module_efficiency": round(float(module_efficiency), 4),
+            "source": "Open-Meteo irradiance + pvlib area-based model",
         }
     }
 
@@ -209,7 +223,7 @@ def estimate_generation_kwh_from_open_meteo(weather_result, target_date):
     tags=["weg", "daily", "LLM"],
 )
 
-def weg_analysis():   
+def weg_analysis():
     #task 1: puxar dados cadastrais da usina
     get_plant_data = SQLExecuteQueryOperator(
         task_id="get_plant_data",
@@ -310,8 +324,8 @@ def weg_analysis():
                     "timezone": timezone,
                     "tilt_deg": plant.get("tilt_deg"),
                     "azimuth_deg": plant.get("azimuth_deg"),
-                    "capacity_kwp": plant.get("capacity_kwp"),
-                    "loss_percent": plant.get("loss_percent"),
+                    "area_m2": plant.get("area_m2"),
+                    "module_efficiency": plant.get("module_efficiency", 0.178),
                     "target_date": target_day.isoformat(),
                     "open_meteo_forecast": open_meteo_data,
                 })
