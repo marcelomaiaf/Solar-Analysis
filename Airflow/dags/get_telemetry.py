@@ -8,7 +8,7 @@ import pandas as pd
 import pvlib
 import requests
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
-from airflow.sdk import dag, task
+from airflow.sdk import dag, get_current_context, task
 from cryptography.fernet import Fernet
 
 tz = ZoneInfo("America/Sao_Paulo")
@@ -92,8 +92,13 @@ def row_as_dict(cursor):
     columns = [col[0] for col in cursor.description]
     return [dict(zip(columns,row)) for row in cursor.fetchall()]
 
-def get_target_date():
-    return (datetime.now(tz) - timedelta(days=1)).date()
+def get_target_date(context=None):
+    if context is None:
+        context = get_current_context()
+    logical_date = context["logical_date"]
+    if logical_date is None:
+        raise ValueError("logical_date ausente no contexto do Airflow")
+    return logical_date.date() - timedelta(days=1)
 
 def utc_day_window(day):
     date_from = datetime(day.year, day.month, day.day, 0, 0, 0, tzinfo=tz)
@@ -246,8 +251,8 @@ def weg_analysis():
         date_from_str, date_to_str = utc_day_window(target_day)
 
         base_params = {
-            "dateFrom": date_from_str, #data de hoje 00:00
-            "dateTo": date_to_str, #data de hoje 23:59
+            "dateFrom": date_from_str, #data de ontem 00:00
+            "dateTo": date_to_str, #data de ontem 23:59
             "groupBy": 900000,
             "variables": "acActivePower",
         }
@@ -269,7 +274,6 @@ def weg_analysis():
                 if response.status_code == 429:
                     time.sleep(20)
                     response = session.get(url=weg_url, params=params)
-                    # response.raise_for_status()
                 
                 results.append({
                     "plant_id": plant.get('vendor_plant_id'),
