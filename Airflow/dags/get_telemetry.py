@@ -248,6 +248,15 @@ def expected_data_by_vendor_plant(expected_generation):
             items[str(vendor_plant_id)] = expected
     return items
 
+def plant_names_by_vendor_plant(plants):
+    names = {}
+    for plant in plants:
+        vendor_plant_id = plant.get("vendor_plant_id")
+        plant_name = plant.get("name")
+        if vendor_plant_id is not None and plant_name:
+            names[str(vendor_plant_id)] = plant_name
+    return names
+
 def simple_report(analysis_results):
     lines = ["Relatorio diario de geracao solar", ""]
     for item in analysis_results:
@@ -386,6 +395,7 @@ def weg_analysis():
                 
                 results.append({
                     "plant_id": plant.get('vendor_plant_id'),
+                    "plant_name": plant.get("name"),
                     "telemetry": response.json(),
                 })
         return results
@@ -463,9 +473,10 @@ def weg_analysis():
         return results
 
     @task
-    def analyze_generation(telemetry_results, expected_generation):
+    def analyze_generation(telemetry_results, expected_generation, plants):
         #task 5 e 6: comparar geracao real x esperada e calcular perdas
         expected_by_vendor_plant = expected_data_by_vendor_plant(expected_generation)
+        plant_names = plant_names_by_vendor_plant(plants)
         results = []
         for telemetry_result in telemetry_results:
             vendor_plant_id = str(telemetry_result.get("plant_id"))
@@ -479,7 +490,7 @@ def weg_analysis():
             results.append({
                 "plant_id": expected.get("plant_id"),
                 "vendor_plant_id": vendor_plant_id,
-                "plant_name": expected.get("plant_name") or vendor_plant_id,
+                "plant_name": plant_names.get(vendor_plant_id) or expected.get("plant_name") or telemetry_result.get("plant_name") or "Usina sem nome",
                 "target_date": expected_data.get("date"),
                 "measured_generation_kwh": measured_kwh,
                 "expected_generation_kwh": round(expected_kwh, 3),
@@ -524,7 +535,7 @@ def weg_analysis():
     telemetry = get_telemetry(get_plant_data.output, credentials)
     weather = get_weather(get_plant_data.output)
     expected_generation = get_expected_generation(weather)
-    analysis = analyze_generation(telemetry, expected_generation)
+    analysis = analyze_generation(telemetry, expected_generation, get_plant_data.output)
     send_generation_email(analysis)
 
 

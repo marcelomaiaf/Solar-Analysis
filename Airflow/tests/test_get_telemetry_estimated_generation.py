@@ -79,6 +79,11 @@ class EstimatedGenerationDagTest(unittest.TestCase):
         self.assertIn("html_content=build_generation_email_html(analysis_results)", self.source)
         self.assertIn("send_generation_email(analysis)", self.source)
         self.assertIn("plant_name = escape(str(item.get(\"plant_name\")", self.source)
+        self.assertIn('"plant_name": plant.get("name")', self.source)
+        self.assertIn("def plant_names_by_vendor_plant", self.source)
+        self.assertIn("plant_names = plant_names_by_vendor_plant(plants)", self.source)
+        self.assertIn("analysis = analyze_generation(telemetry, expected_generation, get_plant_data.output)", self.source)
+        self.assertIn('"plant_name": plant_names.get(vendor_plant_id) or expected.get("plant_name") or telemetry_result.get("plant_name") or "Usina sem nome"', self.source)
         self.assertIn(">Usina<", self.source)
         self.assertNotIn("send_generation_email(report)", self.source)
 
