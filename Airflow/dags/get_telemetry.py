@@ -259,6 +259,76 @@ def simple_report(analysis_results):
         )
     return "\n".join(lines)
 
+def format_kwh(value):
+    return f"{float(value):,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def format_brl(value):
+    return f"R$ {float(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def build_generation_email_html(analysis_results):
+    target_date = next((item.get("target_date") for item in analysis_results if item.get("target_date")), None)
+    plants_outside_range = [item for item in analysis_results if not item.get("within_expected_range")]
+    total_loss_kwh = round(sum(float(item.get("loss_kwh") or 0) for item in analysis_results), 3)
+    total_loss_brl = round(sum(float(item.get("loss_brl") or 0) for item in analysis_results), 2)
+
+    if plants_outside_range:
+        summary = (
+            f"{len(plants_outside_range)} usina(s) ficaram abaixo da faixa esperada. "
+            f"Perda estimada total: {format_kwh(total_loss_kwh)} kWh ({format_brl(total_loss_brl)})."
+        )
+    else:
+        summary = "Todas as usinas ficaram dentro da faixa esperada de geracao."
+
+    rows = []
+    for item in analysis_results:
+        plant_name = escape(str(item.get("plant_name") or "Usina sem nome"))
+        status_label = "Dentro do esperado" if item.get("within_expected_range") else "Abaixo do esperado"
+        status_color = "#166534" if item.get("within_expected_range") else "#b91c1c"
+        measured = format_kwh(item.get("measured_generation_kwh") or 0)
+        expected = format_kwh(item.get("expected_generation_kwh") or 0)
+        expected_min = format_kwh(item.get("expected_min_kwh") or 0)
+        expected_max = format_kwh(item.get("expected_max_kwh") or 0)
+        loss_kwh = format_kwh(item.get("loss_kwh") or 0)
+        loss_brl = format_brl(item.get("loss_brl") or 0)
+        rows.append(
+            "<tr>"
+            f"<td style=\"padding:10px 8px;border-bottom:1px solid #e5e7eb;font-weight:600;color:#111827;\">{plant_name}</td>"
+            f"<td style=\"padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#111827;\">{measured} kWh</td>"
+            f"<td style=\"padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#111827;\">{expected} kWh</td>"
+            f"<td style=\"padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#374151;\">{expected_min} a {expected_max} kWh</td>"
+            f"<td style=\"padding:10px 8px;border-bottom:1px solid #e5e7eb;color:{status_color};font-weight:600;\">{status_label}</td>"
+            f"<td style=\"padding:10px 8px;border-bottom:1px solid #e5e7eb;color:#111827;\">{loss_kwh} kWh / {loss_brl}</td>"
+            "</tr>"
+        )
+
+    period_text = f" referente a {escape(target_date)}" if target_date else ""
+    rows_html = "\n".join(rows)
+    return f"""<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+    <div style="max-width:760px;margin:0 auto;padding:24px 16px;">
+      <h1 style="margin:0 0 8px;font-size:22px;line-height:1.3;color:#0f172a;">Relatorio diario de geracao solar</h1>
+      <p style="margin:0 0 18px;font-size:14px;line-height:1.5;color:#475569;">Resumo{period_text}: {escape(summary)}</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#ffffff;border:1px solid #e5e7eb;">
+        <thead>
+          <tr style="background:#f1f5f9;">
+            <th align="left" style="padding:10px 8px;font-size:12px;color:#475569;">Usina</th>
+            <th align="left" style="padding:10px 8px;font-size:12px;color:#475569;">Gerado</th>
+            <th align="left" style="padding:10px 8px;font-size:12px;color:#475569;">Esperado</th>
+            <th align="left" style="padding:10px 8px;font-size:12px;color:#475569;">Faixa normal</th>
+            <th align="left" style="padding:10px 8px;font-size:12px;color:#475569;">Situacao</th>
+            <th align="left" style="padding:10px 8px;font-size:12px;color:#475569;">Perda estimada</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows_html}
+        </tbody>
+      </table>
+      <p style="margin:16px 0 0;font-size:12px;line-height:1.5;color:#64748b;">A faixa normal considera uma tolerancia de 10% sobre a geracao esperada para o dia.</p>
+    </div>
+  </body>
+</html>"""
+
 @dag(
     dag_id="weg_analysis",
     start_date=datetime(2026, 1, 1),
@@ -442,12 +512,12 @@ def weg_analysis():
             return f"{fallback}\n\nObservacao: relatorio LLM indisponivel ({exc})."
 
     @task
-    def send_generation_email(report_text):
+    def send_generation_email(analysis_results):
         #task 8: remetente vem de AIRFLOW__SMTP__SMTP_MAIL_FROM
         send_email_smtp(
             to=report_recipient_email,
             subject="Relatorio diario de geracao solar",
-            html_content="<br>".join(escape(report_text).splitlines()),
+            html_content=build_generation_email_html(analysis_results),
         )
 
     credentials = get_credentials(get_plant_data.output)
@@ -455,8 +525,7 @@ def weg_analysis():
     weather = get_weather(get_plant_data.output)
     expected_generation = get_expected_generation(weather)
     analysis = analyze_generation(telemetry, expected_generation)
-    report = generate_llm_report(analysis)
-    send_generation_email(report)
+    send_generation_email(analysis)
 
 
 weg_analysis()

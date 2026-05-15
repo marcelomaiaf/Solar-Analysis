@@ -74,6 +74,14 @@ class EstimatedGenerationDagTest(unittest.TestCase):
         self.assertIn('report_sender_email = "marcelomaiaffilho@gmail.com"', self.source)
         self.assertIn('report_recipient_email = "marcelomaiaffilho@gmail.com"', self.source)
 
+    def test_generation_email_uses_analysis_html_without_ids(self):
+        self.assertIn("def build_generation_email_html", self.source)
+        self.assertIn("html_content=build_generation_email_html(analysis_results)", self.source)
+        self.assertIn("send_generation_email(analysis)", self.source)
+        self.assertIn("plant_name = escape(str(item.get(\"plant_name\")", self.source)
+        self.assertIn(">Usina<", self.source)
+        self.assertNotIn("send_generation_email(report)", self.source)
+
 
 if __name__ == "__main__":
     unittest.main()
