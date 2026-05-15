@@ -10,7 +10,7 @@ import pvlib
 import requests
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.sdk import dag, get_current_context, task
-from airflow.utils.email import send_email
+from airflow.utils.email import send_email_smtp
 from cryptography.fernet import Fernet
 
 tz = ZoneInfo("America/Sao_Paulo")
@@ -443,12 +443,11 @@ def weg_analysis():
 
     @task
     def send_generation_email(report_text):
-        #task 8: envio depende do SMTP configurado no Airflow
-        send_email(
+        #task 8: remetente vem de AIRFLOW__SMTP__SMTP_MAIL_FROM
+        send_email_smtp(
             to=report_recipient_email,
             subject="Relatorio diario de geracao solar",
             html_content="<br>".join(escape(report_text).splitlines()),
-            from_email=report_sender_email,
         )
 
     credentials = get_credentials(get_plant_data.output)

@@ -68,6 +68,8 @@ class EstimatedGenerationDagTest(unittest.TestCase):
         self.assertIn("def analyze_generation", self.source)
         self.assertIn("def generate_llm_report", self.source)
         self.assertIn("def send_generation_email", self.source)
+        self.assertIn("send_email_smtp(", self.source)
+        self.assertNotIn("from_email=report_sender_email", self.source)
         self.assertIn("energy_price_brl_per_kwh = 0.725", self.source)
         self.assertIn('report_sender_email = "marcelomaiaffilho@gmail.com"', self.source)
         self.assertIn('report_recipient_email = "marcelomaiaffilho@gmail.com"', self.source)
