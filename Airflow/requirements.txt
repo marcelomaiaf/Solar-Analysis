@@ -7,5 +7,7 @@ sqlalchemy
 openai
 pydantic
 apache-airflow-providers-postgres
+apache-airflow-providers-common-sql
+apache-airflow-providers-smtp
 cryptography
 urllib3

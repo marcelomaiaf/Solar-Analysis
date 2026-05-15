@@ -2,13 +2,15 @@ import json
 import os
 import time
 from datetime import datetime, timedelta, timezone
+from html import escape
 from zoneinfo import ZoneInfo
-
+from openai import OpenAI
 import pandas as pd
 import pvlib
 import requests
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.sdk import dag, get_current_context, task
+from airflow.utils.email import send_email
 from cryptography.fernet import Fernet
 
 tz = ZoneInfo("America/Sao_Paulo")
@@ -20,6 +22,10 @@ default_tilt_deg = 10
 default_azimuth_deg = 0
 default_loss_percent = 14
 default_gamma_pdc = -0.004
+energy_price_brl_per_kwh = 0.725
+report_sender_email = "marcelomaiaffilho@gmail.com"
+report_recipient_email = "marcelomaiaffilho@gmail.com"
+expected_generation_tolerance = 0.10
 hourly_variables = [
         "shortwave_radiation",
         "direct_radiation",
@@ -220,6 +226,39 @@ def estimate_generation_kwh_from_open_meteo(weather_result, target_date):
         }
     }
 
+def telemetry_points(telemetry_result):
+    telemetry = telemetry_result.get("telemetry") or {}
+    data = telemetry.get("data") if isinstance(telemetry, dict) else None
+    return data if isinstance(data, list) else []
+
+def measured_generation_kwh(telemetry_result):
+    values = []
+    for point in telemetry_points(telemetry_result):
+        value = point.get("value") if isinstance(point, dict) else None
+        if value is not None:
+            values.append(max(float(value), 0))
+    return round(sum(values) * 0.25, 3)
+
+def expected_data_by_vendor_plant(expected_generation):
+    items = {}
+    for expected in expected_generation:
+        data = expected.get("data") or {}
+        vendor_plant_id = expected.get("vendor_plant_id") or data.get("vendor_plant_id")
+        if vendor_plant_id is not None:
+            items[str(vendor_plant_id)] = expected
+    return items
+
+def simple_report(analysis_results):
+    lines = ["Relatorio diario de geracao solar", ""]
+    for item in analysis_results:
+        status = "dentro do esperado" if item["within_expected_range"] else "fora do esperado"
+        lines.append(
+            f"{item['plant_name']}: gerou {item['measured_generation_kwh']} kWh, "
+            f"esperado {item['expected_generation_kwh']} kWh, {status}. "
+            f"Perda estimada: {item['loss_kwh']} kWh / R$ {item['loss_brl']}."
+        )
+    return "\n".join(lines)
+
 @dag(
     dag_id="weg_analysis",
     start_date=datetime(2026, 1, 1),
@@ -338,6 +377,7 @@ def weg_analysis():
     
     @task
     def get_expected_generation(weather_results):
+        #task 4: calcular geração esperada
         results = []
         for weather_result in weather_results:
             if weather_result.get("error"):
@@ -352,15 +392,72 @@ def weg_analysis():
 
         return results
 
+    @task
+    def analyze_generation(telemetry_results, expected_generation):
+        #task 5 e 6: comparar geracao real x esperada e calcular perdas
+        expected_by_vendor_plant = expected_data_by_vendor_plant(expected_generation)
+        results = []
+        for telemetry_result in telemetry_results:
+            vendor_plant_id = str(telemetry_result.get("plant_id"))
+            expected = expected_by_vendor_plant.get(vendor_plant_id, {})
+            expected_data = expected.get("data") or {}
+            expected_kwh = float(expected_data.get("expected_generation_kwh") or 0)
+            measured_kwh = measured_generation_kwh(telemetry_result)
+            min_expected = round(expected_kwh * (1 - expected_generation_tolerance), 3)
+            max_expected = round(expected_kwh * (1 + expected_generation_tolerance), 3)
+            loss_kwh = round(max(expected_kwh - measured_kwh, 0), 3)
+            results.append({
+                "plant_id": expected.get("plant_id"),
+                "vendor_plant_id": vendor_plant_id,
+                "plant_name": expected.get("plant_name") or vendor_plant_id,
+                "target_date": expected_data.get("date"),
+                "measured_generation_kwh": measured_kwh,
+                "expected_generation_kwh": round(expected_kwh, 3),
+                "expected_min_kwh": min_expected,
+                "expected_max_kwh": max_expected,
+                "within_expected_range": min_expected <= measured_kwh <= max_expected,
+                "loss_kwh": loss_kwh,
+                "loss_brl": round(loss_kwh * energy_price_brl_per_kwh, 2),
+            })
+        return results
+
+    @task
+    def generate_llm_report(analysis_results):
+        #task 7: usa LLM quando OPENAI_API_KEY existir; caso contrario nao bloqueia o email
+        fallback = simple_report(analysis_results)
+        if not os.getenv("OPENAI_API_KEY"):
+            return fallback
+        try:
+            client = OpenAI()
+            response = client.responses.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
+                input=(
+                    "Escreva um relatorio objetivo em portugues para o dono das usinas. "
+                    "Use estes dados JSON e destaque perdas em kWh e reais:\n"
+                    f"{json.dumps(analysis_results, ensure_ascii=False)}"
+                ),
+            )
+            return response.output_text
+        except Exception as exc:
+            return f"{fallback}\n\nObservacao: relatorio LLM indisponivel ({exc})."
+
+    @task
+    def send_generation_email(report_text):
+        #task 8: envio depende do SMTP configurado no Airflow
+        send_email(
+            to=report_recipient_email,
+            subject="Relatorio diario de geracao solar",
+            html_content="<br>".join(escape(report_text).splitlines()),
+            from_email=report_sender_email,
+        )
+
     credentials = get_credentials(get_plant_data.output)
     telemetry = get_telemetry(get_plant_data.output, credentials)
     weather = get_weather(get_plant_data.output)
     expected_generation = get_expected_generation(weather)
+    analysis = analyze_generation(telemetry, expected_generation)
+    report = generate_llm_report(analysis)
+    send_generation_email(report)
 
 
 weg_analysis()
-#task 4: calcular geração esperada
-#task 5: Identificar se está dentro do intervalo esperado de geração
-#task 6: estimar perda em kwh e financeira
-#task 7: relatório da LLM
-#task 8: mandar por email
