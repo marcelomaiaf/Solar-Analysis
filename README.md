@@ -6,7 +6,7 @@ The repository contains the `weg_analysis` DAG, a scheduled workflow that turns 
 
 This repository is not the full Apolo platform. It is the monitoring and reporting layer that makes the platform more proactive: instead of only storing or displaying solar data, it identifies generation deviations and converts them into a daily operational signal that can guide maintenance, support, and customer communication.
 
-![Airflow DAG run for weg_analysis](output\image_readme.png)
+![Airflow DAG run for weg_analysis](output/image_readme.png)
 
 ## What The DAG Does
 
