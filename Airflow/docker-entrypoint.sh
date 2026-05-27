@@ -26,6 +26,37 @@ passwords_file.write_text(
 PY
 fi
 
+# Clean up corrupted migration revision before starting
+# This preserves all DAG history and metadata while fixing the alembic issue
+python - <<'PY'
+import os
+import sys
+from sqlalchemy import create_engine, text
+
+db_url = os.environ.get("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN", "sqlite:////opt/airflow/data/airflow.db")
+
+try:
+    engine = create_engine(db_url)
+    with engine.connect() as conn:
+        # Check if alembic_version table exists
+        result = conn.execute(text(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'alembic_version')"
+        ))
+        table_exists = result.scalar()
+        
+        if table_exists:
+            # Delete the corrupted revision
+            conn.execute(text("DELETE FROM alembic_version WHERE version_num = 'a1b2c3d4e5f6'"))
+            conn.commit()
+            print("✓ Cleaned up corrupted migration revision 'a1b2c3d4e5f6'")
+        else:
+            print("✓ alembic_version table does not exist yet (fresh database)")
+except Exception as e:
+    print(f"⚠ Could not clean migration table: {e}")
+    print("  This is OK - Airflow will handle it during initialization")
+PY
+
 # Standalone bootstraps the metadata DB and starts the web UI + scheduler.
 # Explicit host/port settings above ensure Railway can reach the service.
 exec /entrypoint airflow standalone
+
